@@ -1,16 +1,17 @@
-import json
+import os
 import requests
 from flask import Flask, render_template_string, request, jsonify
 
 app = Flask(__name__)
 
-# Styling Constants
-DARK_BG = "#1e1f22"
-DARK_FG = "#e6e6e6"
-ENTRY_BG = "#2b2d31"
-BUTTON_BG = "#5865F2"
-NAV_BG = "#111214"
-BORDER = "#3f4147"
+# Discord UI Constants
+DARK_BG = "#313338"  # Actual Discord dark theme background
+NAV_BG = "#1e1f22"
+ENTRY_BG = "#1e1f22"
+BUTTON_BG = "#5865f2"
+BORDER = "#1e1f22"
+TEXT_PRIMARY = "#dbdee1"
+TEXT_MUTED = "#b5bac1"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -18,212 +19,291 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Discord Toolset</title>
+    <title>Discord Toolkit Pro</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: {{ DARK_BG }};
-            color: {{ DARK_FG }};
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            height: 100vh;
+        :root {
+            --bg: #313338; --nav: #1e1f22; --input: #1e1f22;
+            --blurple: #5865f2; --green: #23a55a; --red: #f23f43;
+            --text: #dbdee1; --muted: #b5bac1;
         }
-        /* Navbar Styling */
+        body {
+            font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: var(--bg); color: var(--text);
+            margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh;
+        }
         nav {
-            width: 100%;
-            background-color: {{ NAV_BG }};
-            padding: 10px 0;
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            border-bottom: 1px solid {{ BORDER }};
+            background: var(--nav); padding: 10px; display: flex; justify-content: center; gap: 10px;
+            border-bottom: 1px solid #1e1f22;
         }
         nav button {
-            background: none;
-            border: 1px solid {{ BORDER }};
-            color: {{ DARK_FG }};
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: 0.2s;
+            background: transparent; border: 1px solid #4e5058; color: white;
+            padding: 6px 15px; border-radius: 3px; cursor: pointer; font-weight: 500;
         }
-        nav button.active {
-            background-color: {{ BUTTON_BG }};
-            border-color: {{ BUTTON_BG }};
-        }
-
-        .container {
-            width: 100%;
-            max-width: 800px;
-            padding: 20px;
-            box-sizing: border-box;
-            flex-grow: 1;
-        }
-
-        /* Tool Views */
-        .view { display: none; width: 100%; height: 100%; }
-        .view.active { display: block; }
-
-        h1 { font-size: 24px; margin-bottom: 20px; text-align: center; }
+        nav button.active { background: var(--blurple); border-color: var(--blurple); }
+        
+        .container { max-width: 900px; width: 100%; margin: 0 auto; padding: 20px; box-sizing: border-box; flex-grow: 1; overflow-y: auto; }
+        .view { display: none; } .view.active { display: block; }
+        
+        .card { background: #2b2d31; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
         .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], textarea {
-            width: 100%;
-            padding: 12px;
-            background-color: {{ ENTRY_BG }};
-            color: {{ DARK_FG }};
-            border: 1px solid {{ BORDER }};
-            border-radius: 4px;
-            box-sizing: border-box;
-            font-size: 16px;
+        label { display: block; font-size: 12px; font-weight: bold; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+        
+        input, textarea {
+            width: 100%; padding: 10px; background: var(--input); border: none; color: white;
+            border-radius: 4px; font-size: 15px; box-sizing: border-box;
         }
-        textarea { height: 120px; resize: vertical; }
-        .action-btn {
-            width: 100%;
-            padding: 15px;
-            background-color: {{ BUTTON_BG }};
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        #status { margin-top: 15px; text-align: center; font-weight: bold; }
-        .success { color: #43b581; }
-        .error { color: #f04747; }
+        
+        .inspector { font-size: 13px; margin-top: 5px; color: var(--green); min-height: 18px; }
+        .counter { text-align: right; font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .counter.limit { color: var(--red); }
 
-        iframe {
-            width: 100%;
-            height: 600px;
-            border: 1px solid {{ BORDER }};
-            border-radius: 8px;
-            background: white;
+        /* Discord Preview Mockup */
+        .preview-box { background: var(--bg); border-left: 4px solid var(--blurple); padding: 10px; margin-top: 10px; display: flex; gap: 15px; }
+        .p-avatar { width: 40px; height: 40px; border-radius: 50%; background: #5865f2; flex-shrink: 0; overflow: hidden; }
+        .p-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .p-content { flex-grow: 1; }
+        .p-name { font-weight: 600; font-size: 16px; margin-bottom: 2px; display: flex; align-items: center; gap: 5px; }
+        .p-tag { background: var(--blurple); font-size: 10px; padding: 1px 4px; border-radius: 3px; }
+        .p-text { font-size: 15px; line-height: 1.3; white-space: pre-wrap; word-break: break-word; }
+
+        .btn-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-top: 10px; }
+        button.primary { background: var(--blurple); border: none; color: white; padding: 12px; border-radius: 3px; font-weight: bold; cursor: pointer; }
+        button.secondary { background: #4e5058; border: none; color: white; cursor: pointer; border-radius: 3px; }
+        button.danger { background: var(--red); border: none; color: white; cursor: pointer; border-radius: 3px; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .history-item { 
+            background: var(--input); padding: 10px; border-radius: 4px; margin-top: 5px;
+            display: flex; justify-content: space-between; align-items: center; font-size: 13px;
         }
+        iframe { width: 100%; height: 80vh; border: none; border-radius: 8px; background: white; }
     </style>
 </head>
 <body>
 
-    <nav>
-        <button id="btn-webhook" class="active" onclick="switchView('webhook')">Webhook Sender</button>
-        <button id="btn-pfp" onclick="switchView('pfp')">PFP Grabber</button>
-    </nav>
+<nav>
+    <button id="nav-send" class="active" onclick="setView('send')">Webhook Dashboard</button>
+    <button id="nav-grab" onclick="setView('grab')">PFP Grabber</button>
+</nav>
 
-    <div class="container">
-        <div id="view-webhook" class="view active">
-            <h1>Discord Webhook Sender</h1>
+<div class="container">
+    <div id="view-send" class="view active">
+        <div class="card">
             <div class="form-group">
                 <label>Webhook URL</label>
-                <input type="text" id="webhook_url" placeholder="https://discord.com/api/webhooks/...">
+                <input type="text" id="w_url" placeholder="https://discord.com/api/webhooks/..." oninput="inspectWebhook()">
+                <div id="w_info" class="inspector"></div>
             </div>
-            <div class="form-group">
-                <label>Username Override</label>
-                <input type="text" id="username" placeholder="Optional">
+
+            <div style="display: flex; gap: 15px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>Override Name</label>
+                    <input type="text" id="w_name" placeholder="Spidey" oninput="updatePreview()">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>Override Avatar URL</label>
+                    <input type="text" id="w_avatar" placeholder="https://..." oninput="updatePreview()">
+                </div>
             </div>
-            <div class="form-group">
-                <label>Avatar URL Override</label>
-                <input type="text" id="avatar_url" placeholder="Optional">
-            </div>
+
             <div class="form-group">
                 <label>Message Content</label>
-                <textarea id="content" placeholder="Type your message here..."></textarea>
+                <textarea id="w_content" placeholder="Type a message..." oninput="updatePreview()" rows="4"></textarea>
+                <div id="w_counter" class="counter">0 / 2000</div>
             </div>
-            <button class="action-btn" onclick="sendWebhook()">Send to Discord</button>
-            <div id="status"></div>
+
+            <label>Live Discord Preview</label>
+            <div class="preview-box">
+                <div class="p-avatar"><img id="pre_img" src="https://discord.com/assets/f78426a064bc9dd24847.png"></div>
+                <div class="p-content">
+                    <div class="p-name"><span id="pre_name">Webhook</span> <span class="p-tag">APP</span></div>
+                    <div id="pre_text" class="p-text">Message preview...</div>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Message ID (For Edit/Delete)</label>
+                <input type="text" id="w_msg_id" placeholder="Paste ID to edit or delete">
+            </div>
+
+            <div class="btn-row">
+                <button class="primary" id="btn_send" onclick="apiCall('send')">Send Message</button>
+                <button class="secondary" id="btn_edit" onclick="apiCall('edit')">Edit</button>
+                <button class="danger" id="btn_delete" onclick="apiCall('delete')">Delete</button>
+            </div>
+            <div id="status" style="text-align: center; margin-top: 10px; font-weight: bold; font-size: 14px;"></div>
         </div>
 
-        <div id="view-pfp" class="view">
-            <h1>PFP Grabber</h1>
-            <iframe src="https://discordlabs.org/tools/pfp-grabber"></iframe>
-        </div>
+        <label>Session History</label>
+        <div id="history_list"></div>
     </div>
 
-    <script>
-        function switchView(viewName) {
-            // Update buttons
-            document.getElementById('btn-webhook').classList.remove('active');
-            document.getElementById('btn-pfp').classList.remove('active');
-            document.getElementById('btn-' + viewName).classList.add('active');
+    <div id="view-grab" class="view">
+        <iframe src="https://discordlabs.org/tools/pfp-grabber"></iframe>
+    </div>
+</div>
 
-            // Update views
-            document.getElementById('view-webhook').classList.remove('active');
-            document.getElementById('view-pfp').classList.remove('active');
-            document.getElementById('view-' + viewName).classList.add('active');
+<script>
+    // LocalStorage: Remember URL
+    window.onload = () => {
+        const saved = localStorage.getItem('last_webhook');
+        if(saved) {
+            document.getElementById('w_url').value = saved;
+            inspectWebhook();
         }
+    };
 
-        async function sendWebhook() {
-            const statusDiv = document.getElementById('status');
-            statusDiv.className = '';
-            statusDiv.innerText = 'Sending...';
+    function setView(v) {
+        document.querySelectorAll('.view, nav button').forEach(el => el.classList.remove('active'));
+        document.getElementById('view-' + v).classList.add('active');
+        document.getElementById('nav-' + v).classList.add('active');
+    }
 
-            const data = {
-                webhook_url: document.getElementById('webhook_url').value,
-                username: document.getElementById('username').value,
-                avatar_url: document.getElementById('avatar_url').value,
-                content: document.getElementById('content').value
-            };
+    function updatePreview() {
+        const name = document.getElementById('w_name').value || "Webhook";
+        const avatar = document.getElementById('w_avatar').value || "https://discord.com/assets/f78426a064bc9dd24847.png";
+        const content = document.getElementById('w_content').value;
+        
+        document.getElementById('pre_name').innerText = name;
+        document.getElementById('pre_img').src = avatar;
+        
+        // Simple Markdown Parser
+        let parsed = content.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>')
+                            .replace(/\\*(.*?)\\*/g, '<i>$1</i>')
+                            .replace(/`(.*?)`/g, '<code style="background:#2b2d31;padding:2px;">$1</code>');
+        
+        document.getElementById('pre_text').innerHTML = parsed || "Message preview...";
+        
+        const count = content.length;
+        const counterEl = document.getElementById('w_counter');
+        counterEl.innerText = `${count} / 2000`;
+        counterEl.className = count > 2000 ? "counter limit" : "counter";
+    }
 
-            try {
-                const response = await fetch('/send', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-
-                const result = await response.json();
-                if (response.ok) {
-                    statusDiv.className = 'success';
-                    statusDiv.innerText = 'Message sent successfully!';
-                    document.getElementById('content').value = '';
-                } else {
-                    statusDiv.className = 'error';
-                    statusDiv.innerText = 'Error: ' + result.error;
-                }
-            } catch (e) {
-                statusDiv.className = 'error';
-                statusDiv.innerText = 'Error: ' + e.message;
+    async function inspectWebhook() {
+        const url = document.getElementById('w_url').value;
+        const info = document.getElementById('w_info');
+        if (!url.includes('webhooks/')) return info.innerText = "";
+        
+        try {
+            const r = await fetch(url);
+            if (r.ok) {
+                const data = await r.json();
+                info.style.color = "var(--green)";
+                info.innerText = `Connected to: #${data.name || 'unknown'}`;
+                localStorage.setItem('last_webhook', url);
+            } else {
+                info.style.color = "var(--red)";
+                info.innerText = "Invalid Webhook URL";
             }
+        } catch(e) { info.innerText = ""; }
+    }
+
+    async function apiCall(type) {
+        const status = document.getElementById('status');
+        const url = document.getElementById('w_url').value;
+        const msgId = document.getElementById('w_msg_id').value;
+        
+        status.innerText = "Processing...";
+        status.style.color = "white";
+
+        const payload = {
+            url: url,
+            msg_id: msgId,
+            content: document.getElementById('w_content').value,
+            username: document.getElementById('w_name').value,
+            avatar_url: document.getElementById('w_avatar').value
+        };
+
+        try {
+            const r = await fetch('/' + type, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const res = await r.json();
+
+            if (res.success) {
+                status.innerText = "Success!";
+                status.style.color = "var(--green)";
+                if(type === 'send' && res.id) {
+                    addToHistory(res.id, payload.content);
+                    document.getElementById('w_content').value = "";
+                    updatePreview();
+                }
+            } else {
+                status.innerText = res.error || "Failed";
+                status.style.color = "var(--red)";
+            }
+        } catch(e) {
+            status.innerText = "Error connecting to server";
         }
-    </script>
+    }
+
+    function addToHistory(id, text) {
+        const list = document.getElementById('history_list');
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        item.innerHTML = `
+            <span>ID: ${id.substring(0,8)}... "${text.substring(0,20)}..."</span>
+            <button onclick="copyToId('${id}')" style="background:var(--blurple);border:none;color:white;padding:4px 8px;border-radius:3px;cursor:pointer;">Use ID</button>
+        `;
+        list.prepend(item);
+    }
+
+    function copyToId(id) {
+        document.getElementById('w_msg_id').value = id;
+        document.getElementById('w_msg_id').style.border = "1px solid var(--blurple)";
+    }
+</script>
+
 </body>
 </html>
 """
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE, 
-                                DARK_BG=DARK_BG, 
-                                DARK_FG=DARK_FG, 
-                                ENTRY_BG=ENTRY_BG, 
-                                BUTTON_BG=BUTTON_BG, 
-                                NAV_BG=NAV_BG,
-                                BORDER=BORDER)
+    return render_template_string(HTML_TEMPLATE)
 
 @app.route('/send', methods=['POST'])
 def send():
     data = request.json
-    webhook_url = data.get('webhook_url')
-    if not webhook_url:
-        return jsonify({"error": "Webhook URL is required"}), 400
-
-    payload = {
-        "content": data.get('content'),
-        "username": data.get('username'),
-        "avatar_url": data.get('avatar_url')
-    }
-    payload = {k: v for k, v in payload.items() if v}
-
+    # wait=true is required to get the Message ID back from Discord
+    url = data.get('url') + "?wait=true"
+    payload = {"content": data.get('content'), "username": data.get('username'), "avatar_url": data.get('avatar_url')}
+    
     try:
-        r = requests.post(webhook_url, json=payload, timeout=10)
+        r = requests.post(url, json={k:v for k,v in payload.items() if v}, timeout=10)
+        if r.status_code == 429: return jsonify({"error": "Rate limited! Wait a few seconds."}), 429
+        r.raise_for_status()
+        return jsonify({"success": True, "id": r.json().get('id')})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/edit', methods=['POST'])
+def edit():
+    data = request.json
+    url = f"{data.get('url')}/messages/{data.get('msg_id')}"
+    payload = {"content": data.get('content'), "username": data.get('username'), "avatar_url": data.get('avatar_url')}
+    
+    try:
+        r = requests.patch(url, json={k:v for k,v in payload.items() if v}, timeout=10)
         r.raise_for_status()
         return jsonify({"success": True})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Edit failed. Check Message ID."}), 400
+
+@app.route('/delete', methods=['POST'])
+def delete():
+    data = request.json
+    url = f"{data.get('url')}/messages/{data.get('msg_id')}"
+    try:
+        r = requests.delete(url, timeout=10)
+        r.raise_for_status()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": "Delete failed. Check Message ID."}), 400
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)

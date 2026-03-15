@@ -72,7 +72,7 @@ HTML_TEMPLATE = """
         button.secondary { background: #4e5058; border: none; color: white; padding: 10px; cursor: pointer; border-radius: 3px; white-space: nowrap; font-weight: bold; }
         button.danger { background: var(--red); border: none; color: white; padding: 10px; cursor: pointer; border-radius: 3px; }
         
-        .utility-bar { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 15px; border-top: 1px solid #4e5058; }
+        .utility-bar { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; padding-top: 15px; border-top: 1px solid #4e5058; }
 
         .history-item { 
             background: var(--input); padding: 10px; border-radius: 4px; margin-top: 5px;
@@ -107,7 +107,7 @@ HTML_TEMPLATE = """
 
             <div style="display: flex; gap: 15px; margin-top: 10px;">
                 <div class="form-group" style="flex: 1;">
-                    <label>Override Name</label>
+                    <label>Override Name (Used for Preset Name)</label>
                     <input type="text" id="w_name" placeholder="Optional" oninput="updatePreview()">
                 </div>
                 <div class="form-group" style="flex: 1;">
@@ -141,14 +141,18 @@ HTML_TEMPLATE = """
                 <button class="secondary" id="btn_edit" onclick="apiCall('edit')">Edit</button>
                 <button class="danger" id="btn_delete" onclick="apiCall('delete')">Delete</button>
             </div>
+            
             <div id="status" style="text-align: center; margin-top: 10px; font-weight: bold; font-size: 14px;"></div>
             
             <div class="utility-bar">
-                <span style="font-size: 12px; color: var(--muted);">Data Backup (Bypasses Render Wipes)</span>
-                <div style="display: flex; gap: 10px;">
-                    <button class="secondary" style="padding: 5px 10px; font-size: 12px;" onclick="exportJSON()">Export JSON</button>
-                    <button class="secondary" style="padding: 5px 10px; font-size: 12px;" onclick="importJSON()">Import JSON</button>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 12px; color: var(--muted);">Data Backup (Bypasses Browser Pop-up Blockers)</span>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="secondary" style="padding: 5px 10px; font-size: 12px;" onclick="exportJSON()">Export JSON String</button>
+                        <button class="secondary" style="padding: 5px 10px; font-size: 12px;" onclick="importJSON()">Import JSON String</button>
+                    </div>
                 </div>
+                <textarea id="backup_io" placeholder="Backup string will appear here. Or, paste your string here and click Import." rows="3" style="display: none; font-family: monospace; font-size: 11px;"></textarea>
             </div>
         </div>
 
@@ -177,10 +181,15 @@ HTML_TEMPLATE = """
         document.getElementById('nav-' + v).classList.add('active');
     }
 
-    // --- PRESETS LOGIC ---
+    // --- PRESETS LOGIC (No Prompts) ---
     function savePreset() {
-        const name = prompt("Enter a name for this preset (e.g., 'Main Announcer'):");
-        if(!name) return;
+        const status = document.getElementById('status');
+        let name = document.getElementById('w_name').value.trim();
+        
+        // Use a fallback name if the Override Name is blank
+        if (!name) {
+            name = "Unnamed Preset " + Math.floor(Math.random() * 100);
+        }
 
         const presetData = {
             url: document.getElementById('w_url').value,
@@ -192,7 +201,9 @@ HTML_TEMPLATE = """
         presets[name] = presetData;
         localStorage.setItem('app_presets', JSON.stringify(presets));
         refreshPresets();
-        alert("Preset saved!");
+        
+        status.innerText = `Saved as "${name}"!`;
+        status.style.color = "var(--green)";
     }
 
     function loadPreset() {
@@ -260,32 +271,58 @@ HTML_TEMPLATE = """
         } catch(e) { info.innerText = ""; }
     }
 
-    // --- JSON EXPORT / IMPORT ---
+    // --- JSON EXPORT / IMPORT (No file downloads or prompts) ---
     function exportJSON() {
         const data = {
             app_presets: JSON.parse(localStorage.getItem('app_presets') || '{}'),
             last_webhook: localStorage.getItem('last_webhook') || ""
         };
-        const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "discord_toolkit_backup.json";
-        a.click();
-        URL.revokeObjectURL(url);
+        const backupString = JSON.stringify(data);
+        
+        const ioBox = document.getElementById('backup_io');
+        const status = document.getElementById('status');
+        
+        ioBox.style.display = 'block';
+        ioBox.value = backupString;
+        
+        // Try to auto-copy
+        ioBox.select();
+        try {
+            document.execCommand('copy');
+            status.innerText = "Backup string copied to your clipboard!";
+            status.style.color = "var(--green)";
+        } catch (err) {
+            status.innerText = "Backup generated. Please copy the text from the box below.";
+            status.style.color = "var(--blurple)";
+        }
     }
 
     function importJSON() {
-        const input = prompt("Paste your JSON backup data here:");
-        if(!input) return;
+        const ioBox = document.getElementById('backup_io');
+        const status = document.getElementById('status');
+        
+        // If the box is hidden or empty, open it and tell the user to paste
+        if (ioBox.style.display === 'none' || ioBox.value.trim() === '') {
+            ioBox.style.display = 'block';
+            ioBox.value = '';
+            status.innerText = "Paste your backup string into the box, then click Import again.";
+            status.style.color = "var(--blurple)";
+            return;
+        }
+
         try {
-            const data = JSON.parse(input);
+            const data = JSON.parse(ioBox.value);
             if(data.app_presets) localStorage.setItem('app_presets', JSON.stringify(data.app_presets));
             if(data.last_webhook) localStorage.setItem('last_webhook', data.last_webhook);
             refreshPresets();
-            alert("Backup imported successfully!");
+            
+            ioBox.value = '';
+            ioBox.style.display = 'none';
+            status.innerText = "Backup imported successfully!";
+            status.style.color = "var(--green)";
         } catch(e) {
-            alert("Invalid JSON format.");
+            status.innerText = "Invalid JSON string. Please make sure you copied it correctly.";
+            status.style.color = "var(--red)";
         }
     }
 
@@ -361,7 +398,6 @@ def send():
     data = request.json
     url = data.get('url') + "?wait=true"
     
-    # We add allowed_mentions to force Discord to parse @everyone, @here, and <@IDs>
     payload = {
         "content": data.get('content'), 
         "username": data.get('username'), 

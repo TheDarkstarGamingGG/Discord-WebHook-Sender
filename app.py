@@ -5,7 +5,7 @@ from flask import Flask, render_template_string, request, jsonify
 app = Flask(__name__)
 
 # Discord UI Constants
-DARK_BG = "#313338"  # Actual Discord dark theme background
+DARK_BG = "#313338"  
 NAV_BG = "#1e1f22"
 ENTRY_BG = "#1e1f22"
 BUTTON_BG = "#5865f2"
@@ -48,16 +48,16 @@ HTML_TEMPLATE = """
         .form-group { margin-bottom: 15px; }
         label { display: block; font-size: 12px; font-weight: bold; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
         
-        input, textarea {
+        input, textarea, select {
             width: 100%; padding: 10px; background: var(--input); border: none; color: white;
-            border-radius: 4px; font-size: 15px; box-sizing: border-box;
+            border-radius: 4px; font-size: 15px; box-sizing: border-box; font-family: inherit;
         }
+        select { cursor: pointer; }
         
         .inspector { font-size: 13px; margin-top: 5px; color: var(--green); min-height: 18px; }
         .counter { text-align: right; font-size: 12px; color: var(--muted); margin-top: 4px; }
         .counter.limit { color: var(--red); }
 
-        /* Discord Preview Mockup */
         .preview-box { background: var(--bg); border-left: 4px solid var(--blurple); padding: 10px; margin-top: 10px; display: flex; gap: 15px; }
         .p-avatar { width: 40px; height: 40px; border-radius: 50%; background: #5865f2; flex-shrink: 0; overflow: hidden; }
         .p-avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -67,10 +67,12 @@ HTML_TEMPLATE = """
         .p-text { font-size: 15px; line-height: 1.3; white-space: pre-wrap; word-break: break-word; }
 
         .btn-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .flex-row { display: flex; gap: 10px; margin-bottom: 15px; }
         button.primary { background: var(--blurple); border: none; color: white; padding: 12px; border-radius: 3px; font-weight: bold; cursor: pointer; }
-        button.secondary { background: #4e5058; border: none; color: white; cursor: pointer; border-radius: 3px; }
-        button.danger { background: var(--red); border: none; color: white; cursor: pointer; border-radius: 3px; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button.secondary { background: #4e5058; border: none; color: white; padding: 10px; cursor: pointer; border-radius: 3px; white-space: nowrap; font-weight: bold; }
+        button.danger { background: var(--red); border: none; color: white; padding: 10px; cursor: pointer; border-radius: 3px; }
+        
+        .utility-bar { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 15px; border-top: 1px solid #4e5058; }
 
         .history-item { 
             background: var(--input); padding: 10px; border-radius: 4px; margin-top: 5px;
@@ -89,30 +91,38 @@ HTML_TEMPLATE = """
 <div class="container">
     <div id="view-send" class="view active">
         <div class="card">
+            <label>Saved Presets (Auto-fills Webhook, Name & PFP)</label>
+            <div class="flex-row">
+                <select id="preset_select" onchange="loadPreset()">
+                    <option value="">-- Select a Preset --</option>
+                </select>
+                <button class="secondary" onclick="savePreset()">Save as Preset</button>
+            </div>
+
             <div class="form-group">
                 <label>Webhook URL</label>
                 <input type="text" id="w_url" placeholder="https://discord.com/api/webhooks/..." oninput="inspectWebhook()">
                 <div id="w_info" class="inspector"></div>
             </div>
 
-            <div style="display: flex; gap: 15px;">
+            <div style="display: flex; gap: 15px; margin-top: 10px;">
                 <div class="form-group" style="flex: 1;">
                     <label>Override Name</label>
-                    <input type="text" id="w_name" placeholder="Spidey" oninput="updatePreview()">
+                    <input type="text" id="w_name" placeholder="Optional" oninput="updatePreview()">
                 </div>
                 <div class="form-group" style="flex: 1;">
                     <label>Override Avatar URL</label>
-                    <input type="text" id="w_avatar" placeholder="https://..." oninput="updatePreview()">
+                    <input type="text" id="w_avatar" placeholder="Optional" oninput="updatePreview()">
                 </div>
             </div>
 
             <div class="form-group">
                 <label>Message Content</label>
-                <textarea id="w_content" placeholder="Type a message..." oninput="updatePreview()" rows="4"></textarea>
+                <textarea id="w_content" placeholder="Type a message... Use <@USER_ID> to mention someone." oninput="updatePreview()" rows="4"></textarea>
                 <div id="w_counter" class="counter">0 / 2000</div>
             </div>
 
-            <label>Live Discord Preview</label>
+            <label style="margin-top: 20px;">Live Discord Preview</label>
             <div class="preview-box">
                 <div class="p-avatar"><img id="pre_img" src="https://discord.com/assets/f78426a064bc9dd24847.png"></div>
                 <div class="p-content">
@@ -132,6 +142,14 @@ HTML_TEMPLATE = """
                 <button class="danger" id="btn_delete" onclick="apiCall('delete')">Delete</button>
             </div>
             <div id="status" style="text-align: center; margin-top: 10px; font-weight: bold; font-size: 14px;"></div>
+            
+            <div class="utility-bar">
+                <span style="font-size: 12px; color: var(--muted);">Data Backup (Bypasses Render Wipes)</span>
+                <div style="display: flex; gap: 10px;">
+                    <button class="secondary" style="padding: 5px 10px; font-size: 12px;" onclick="exportJSON()">Export JSON</button>
+                    <button class="secondary" style="padding: 5px 10px; font-size: 12px;" onclick="importJSON()">Import JSON</button>
+                </div>
+            </div>
         </div>
 
         <label>Session History</label>
@@ -144,11 +162,11 @@ HTML_TEMPLATE = """
 </div>
 
 <script>
-    // LocalStorage: Remember URL
     window.onload = () => {
-        const saved = localStorage.getItem('last_webhook');
-        if(saved) {
-            document.getElementById('w_url').value = saved;
+        refreshPresets();
+        const savedUrl = localStorage.getItem('last_webhook');
+        if(savedUrl) {
+            document.getElementById('w_url').value = savedUrl;
             inspectWebhook();
         }
     };
@@ -159,6 +177,50 @@ HTML_TEMPLATE = """
         document.getElementById('nav-' + v).classList.add('active');
     }
 
+    // --- PRESETS LOGIC ---
+    function savePreset() {
+        const name = prompt("Enter a name for this preset (e.g., 'Main Announcer'):");
+        if(!name) return;
+
+        const presetData = {
+            url: document.getElementById('w_url').value,
+            username: document.getElementById('w_name').value,
+            avatar: document.getElementById('w_avatar').value
+        };
+
+        let presets = JSON.parse(localStorage.getItem('app_presets') || '{}');
+        presets[name] = presetData;
+        localStorage.setItem('app_presets', JSON.stringify(presets));
+        refreshPresets();
+        alert("Preset saved!");
+    }
+
+    function loadPreset() {
+        const select = document.getElementById('preset_select');
+        if(!select.value) return;
+        
+        const presets = JSON.parse(localStorage.getItem('app_presets') || '{}');
+        const p = presets[select.value];
+        if(p) {
+            document.getElementById('w_url').value = p.url || "";
+            document.getElementById('w_name').value = p.username || "";
+            document.getElementById('w_avatar').value = p.avatar || "";
+            inspectWebhook();
+            updatePreview();
+        }
+    }
+
+    function refreshPresets() {
+        const select = document.getElementById('preset_select');
+        select.innerHTML = '<option value="">-- Select a Preset --</option>';
+        
+        const presets = JSON.parse(localStorage.getItem('app_presets') || '{}');
+        for(const name of Object.keys(presets)) {
+            select.innerHTML += `<option value="${name}">${name}</option>`;
+        }
+    }
+
+    // --- PREVIEW & INSPECTOR ---
     function updatePreview() {
         const name = document.getElementById('w_name').value || "Webhook";
         const avatar = document.getElementById('w_avatar').value || "https://discord.com/assets/f78426a064bc9dd24847.png";
@@ -167,7 +229,6 @@ HTML_TEMPLATE = """
         document.getElementById('pre_name').innerText = name;
         document.getElementById('pre_img').src = avatar;
         
-        // Simple Markdown Parser
         let parsed = content.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>')
                             .replace(/\\*(.*?)\\*/g, '<i>$1</i>')
                             .replace(/`(.*?)`/g, '<code style="background:#2b2d31;padding:2px;">$1</code>');
@@ -199,6 +260,36 @@ HTML_TEMPLATE = """
         } catch(e) { info.innerText = ""; }
     }
 
+    // --- JSON EXPORT / IMPORT ---
+    function exportJSON() {
+        const data = {
+            app_presets: JSON.parse(localStorage.getItem('app_presets') || '{}'),
+            last_webhook: localStorage.getItem('last_webhook') || ""
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "discord_toolkit_backup.json";
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function importJSON() {
+        const input = prompt("Paste your JSON backup data here:");
+        if(!input) return;
+        try {
+            const data = JSON.parse(input);
+            if(data.app_presets) localStorage.setItem('app_presets', JSON.stringify(data.app_presets));
+            if(data.last_webhook) localStorage.setItem('last_webhook', data.last_webhook);
+            refreshPresets();
+            alert("Backup imported successfully!");
+        } catch(e) {
+            alert("Invalid JSON format.");
+        }
+    }
+
+    // --- API CALLS ---
     async function apiCall(type) {
         const status = document.getElementById('status');
         const url = document.getElementById('w_url').value;
@@ -268,9 +359,15 @@ def index():
 @app.route('/send', methods=['POST'])
 def send():
     data = request.json
-    # wait=true is required to get the Message ID back from Discord
     url = data.get('url') + "?wait=true"
-    payload = {"content": data.get('content'), "username": data.get('username'), "avatar_url": data.get('avatar_url')}
+    
+    # We add allowed_mentions to force Discord to parse @everyone, @here, and <@IDs>
+    payload = {
+        "content": data.get('content'), 
+        "username": data.get('username'), 
+        "avatar_url": data.get('avatar_url'),
+        "allowed_mentions": {"parse": ["users", "roles", "everyone"]}
+    }
     
     try:
         r = requests.post(url, json={k:v for k,v in payload.items() if v}, timeout=10)
@@ -284,7 +381,13 @@ def send():
 def edit():
     data = request.json
     url = f"{data.get('url')}/messages/{data.get('msg_id')}"
-    payload = {"content": data.get('content'), "username": data.get('username'), "avatar_url": data.get('avatar_url')}
+    
+    payload = {
+        "content": data.get('content'), 
+        "username": data.get('username'), 
+        "avatar_url": data.get('avatar_url'),
+        "allowed_mentions": {"parse": ["users", "roles", "everyone"]}
+    }
     
     try:
         r = requests.patch(url, json={k:v for k,v in payload.items() if v}, timeout=10)

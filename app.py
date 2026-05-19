@@ -159,6 +159,7 @@ HTML_TEMPLATE = """
                     <option value="">-- Select a Preset --</option>
                 </select>
                 <button class="secondary" onclick="savePreset()">Save as Preset</button>
+                <button class="danger" onclick="deletePreset()" title="Delete selected preset">&#x1F5D1;</button>
             </div>
 
             <!-- Webhook URL -->
@@ -519,6 +520,23 @@ function refreshPresets() {
     for (const name of Object.keys(presets)) {
         select.innerHTML += `<option value="${name}">${name}</option>`;
     }
+}
+
+function deletePreset() {
+    const select = document.getElementById('preset_select');
+    const status = document.getElementById('status');
+    const name   = select.value;
+    if (!name) {
+        status.innerText   = "Select a preset to delete first.";
+        status.style.color = "var(--muted)";
+        return;
+    }
+    let presets = JSON.parse(localStorage.getItem('app_presets') || '{}');
+    delete presets[name];
+    localStorage.setItem('app_presets', JSON.stringify(presets));
+    refreshPresets();
+    status.innerText   = `Deleted preset "${name}".`;
+    status.style.color = "var(--red)";
 }
 
 // ─────────────────────────────────────────────

@@ -1110,7 +1110,7 @@ function updateEmbedPreview() {
 
     if (authorName) {
         h += '<div class="embed-author-row">';
-        if (authorIcon) h += '<img class="embed-author-icon" src="' + escH(authorIcon) + '" onerror="this.style.display=\'none\'">';
+        if (authorIcon) h += '<img class="embed-author-icon" src="' + escH(authorIcon) + '" onerror="this.style.display=\\'none\\'">';
         h += '<span class="embed-author-name">' + escH(authorName) + '</span></div>';
     }
 
@@ -1137,19 +1137,19 @@ function updateEmbedPreview() {
     }
 
     if (imageUrl) {
-        h += '<img class="embed-big-img" src="' + escH(imageUrl) + '" onerror="this.style.display=\'none\'">';
+        h += '<img class="embed-big-img" src="' + escH(imageUrl) + '" onerror="this.style.display=\\'none\\'">';
     }
 
     if (footerTxt) {
         h += '<div class="embed-footer-row">';
-        if (footerIcon) h += '<img class="embed-footer-icon" src="' + escH(footerIcon) + '" onerror="this.style.display=\'none\'">';
+        if (footerIcon) h += '<img class="embed-footer-icon" src="' + escH(footerIcon) + '" onerror="this.style.display=\\'none\\'">';
         h += '<span class="embed-footer-text">' + escH(footerTxt) + '</span></div>';
     }
 
     h += '</div>'; // embed-inner
 
     if (thumbUrl) {
-        h += '<img class="embed-thumb-img" src="' + escH(thumbUrl) + '" onerror="this.style.display=\'none\'">';
+        h += '<img class="embed-thumb-img" src="' + escH(thumbUrl) + '" onerror="this.style.display=\\'none\\'">';
     }
 
     h += '</div>'; // embed-card

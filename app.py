@@ -1063,7 +1063,7 @@ function updatePreview() {
                 .replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>')
                 .replace(/\\*(.*?)\\*/g, '<i>$1</i>')
                 .replace(/~~(.*?)~~/g, '<s>$1</s>')
-                .replace(/\\|\\|(.*?)\\|\\|/g, '<span style="background:#202225;color:#202225;border-radius:2px;padding:0 2px;cursor:pointer;" onclick="this.style.color=\'var(--text)\'" title="Spoiler — click to reveal">$1</span>')
+                .replace(/\\|\\|(.*?)\\|\\|/g, '<span style="background:#202225;color:#202225;border-radius:2px;padding:0 2px;cursor:pointer;" onclick="this.style.color=\\'var(--text)\\'" title="Spoiler — click to reveal">$1</span>')
                 .replace(/`(.*?)`/g, '<code style="background:#1e1f22;padding:1px 4px;border-radius:3px;">$1</code>')
                 .replace(/^&gt; (.+)$/gm, '<div style="border-left:3px solid #4e5058;padding-left:8px;margin:2px 0;color:var(--muted)">$1</div>');
         }

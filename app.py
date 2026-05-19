@@ -109,6 +109,15 @@ HTML_TEMPLATE = """
         .tb-meta { background: #4e5058; color: white; }
         .ansi-textarea { border-radius: 0 0 4px 4px !important; }
 
+        /* ── Typewriter panel ── */
+        .tw-panel { background: var(--input); border-radius: 4px; padding: 10px 12px; margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .tw-label { font-size: 11px; font-weight: bold; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
+        .speed-group { display: flex; gap: 3px; }
+        .speed-btn { background: #3b3d44; border: 1px solid #4e5058; color: var(--muted); padding: 3px 10px; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.1s; }
+        .speed-btn:hover { border-color: #7c8291; color: white; }
+        .speed-btn.active { background: var(--blurple); border-color: var(--blurple); color: white; }
+        .tw-progress { font-size: 12px; color: var(--blurple); font-family: monospace; margin-left: auto; }
+
         /* ── Embed live preview card ── */
         .embed-card { background: #2b2d31; border-radius: 4px; overflow: hidden; display: flex; max-width: 520px; margin-top: 8px; border-left: 4px solid #5865f2; }
         .embed-inner { padding: 12px 16px 12px 12px; flex-grow: 1; min-width: 0; }
@@ -194,6 +203,17 @@ HTML_TEMPLATE = """
                     <div class="ansi-toolbar" id="msg-toolbar"></div>
                     <textarea id="w_content" class="ansi-textarea" placeholder="Type a message... Use <@USER_ID> to mention someone." oninput="updatePreview()" rows="4"></textarea>
                     <div id="w_counter" class="counter">0 / 2000</div>
+                    <div class="tw-panel">
+                        <span class="tw-label">⌨️ Typewriter</span>
+                        <div class="speed-group">
+                            <button class="speed-btn" onclick="setTwSpeed(this,400)">Slow</button>
+                            <button class="speed-btn active" onclick="setTwSpeed(this,200)">Normal</button>
+                            <button class="speed-btn" onclick="setTwSpeed(this,100)">Fast</button>
+                        </div>
+                        <button id="btn-tw-start" class="secondary" style="padding:5px 14px;font-size:13px;" onclick="runTypewriter()">▶ Start</button>
+                        <button id="btn-tw-stop" class="danger" style="padding:5px 14px;font-size:13px;display:none;" onclick="stopTypewriter()">■ Stop</button>
+                        <span id="tw-progress" class="tw-progress"></span>
+                    </div>
                 </div>
             </div>
 
@@ -367,6 +387,95 @@ const ACCENT_PRESETS = [
     '#1abc9c','#e67e22','#9b59b6','#3498db','#ff6b6b',
     '#ffd700','#00b0f4','#ff4500','#2ecc71','#ffffff',
 ];
+
+// ─────────────────────────────────────────────
+//  Typewriter
+// ─────────────────────────────────────────────
+let twActive = false;
+let twSpeed  = 200;
+
+function setTwSpeed(btn, ms) {
+    twSpeed = ms;
+    btn.closest('.speed-group').querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+}
+
+function stopTypewriter() {
+    twActive = false;
+    document.getElementById('btn-tw-start').style.display = '';
+    document.getElementById('btn-tw-stop').style.display  = 'none';
+    document.getElementById('tw-progress').innerText = '';
+}
+
+async function runTypewriter() {
+    const url     = document.getElementById('w_url').value.trim();
+    const content = document.getElementById('w_content').value;
+    const status  = document.getElementById('status');
+
+    if (!url.includes('webhooks/')) {
+        status.innerText = 'Enter a webhook URL first.';
+        status.style.color = 'var(--red)'; return;
+    }
+    if (!content.trim()) {
+        status.innerText = 'Type a message first.';
+        status.style.color = 'var(--red)'; return;
+    }
+
+    twActive = true;
+    document.getElementById('btn-tw-start').style.display = 'none';
+    document.getElementById('btn-tw-stop').style.display  = '';
+    const prog = document.getElementById('tw-progress');
+
+    const base = {
+        url:        url,
+        username:   document.getElementById('w_name').value,
+        avatar_url: document.getElementById('w_avatar').value,
+    };
+
+    // send first character
+    let r = await fetch('/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ...base, content: content[0] })
+    });
+    let res = await r.json();
+    if (!res.success) {
+        status.innerText = res.error || 'Typewriter send failed.';
+        status.style.color = 'var(--red)';
+        stopTypewriter(); return;
+    }
+
+    const msgId = res.id;
+    addToHistory(msgId, content);
+
+    for (let i = 1; i < content.length && twActive; i++) {
+        prog.innerText = `${i + 1} / ${content.length}`;
+        await new Promise(res => setTimeout(res, twSpeed));
+        if (!twActive) break;
+
+        let er = await fetch('/edit', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ...base, msg_id: msgId, content: content.substring(0, i + 1) })
+        });
+        let eres = await er.json();
+        if (!eres.success) {
+            if (eres.error && eres.error.toLowerCase().includes('rate')) {
+                await new Promise(res => setTimeout(res, 2500));
+                i--;
+            }
+        }
+    }
+
+    if (twActive) {
+        status.innerText = '✓ Typewriter complete!';
+        status.style.color = 'var(--green)';
+    } else {
+        status.innerText = 'Typewriter stopped.';
+        status.style.color = 'var(--muted)';
+    }
+    stopTypewriter();
+}
 
 // ─────────────────────────────────────────────
 //  Init

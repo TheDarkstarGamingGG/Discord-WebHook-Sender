@@ -148,13 +148,32 @@ HTML_TEMPLATE = """
 
         .sec-divider { border: none; border-top: 1px solid #3b3d44; margin: 18px 0 15px; }
         .sub-label { font-size: 11px; font-weight: normal; text-transform: none; color: var(--blurple); margin-left: 6px; }
+
+        /* ── Settings view ── */
+        .setting-row { display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid #3b3d44; gap:16px; }
+        .setting-row:last-child { border-bottom:none; }
+        .setting-name { font-weight:600; font-size:14px; margin-bottom:3px; }
+        .setting-desc { font-size:12px; color:var(--muted); }
+        .toggle-switch { position:relative; display:inline-block; width:44px; height:24px; flex-shrink:0; cursor:pointer; }
+        .toggle-switch input { opacity:0; width:0; height:0; position:absolute; }
+        .toggle-slider { position:absolute; inset:0; background:#4e5058; border-radius:24px; transition:background 0.2s; }
+        .toggle-slider::before { content:''; position:absolute; width:18px; height:18px; left:3px; top:3px; background:white; border-radius:50%; transition:transform 0.2s; }
+        .toggle-switch input:checked + .toggle-slider { background:var(--blurple); }
+        .toggle-switch input:checked + .toggle-slider::before { transform:translateX(20px); }
+
+        /* ── Send button pop animation ── */
+        @keyframes btn-pop { 0%{transform:scale(1)} 40%{transform:scale(1.1)} 100%{transform:scale(1)} }
+        .btn-pop { animation:btn-pop 0.22s ease-out; }
+
+        /* ── Confetti canvas ── */
+        #confetti-canvas { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999; }
     </style>
 </head>
 <body>
 
 <nav>
     <button id="nav-send" class="active" onclick="setView('send')">Webhook Dashboard</button>
-    <button id="nav-grab" onclick="setView('grab')">PFP Grabber</button>
+    <button id="nav-settings" onclick="setView('settings')">Settings</button>
 </nav>
 
 <div class="container">
@@ -322,7 +341,7 @@ HTML_TEMPLATE = """
             </div>
 
             <div class="btn-row">
-                <button class="primary" id="btn_send" onclick="apiCall('send')">Send Message</button>
+                <button class="primary" id="btn_send" onclick="popSendBtn();apiCall('send')">Send Message</button>
                 <button class="secondary" id="btn_edit" onclick="apiCall('edit')">Edit</button>
                 <button class="danger" id="btn_delete" onclick="apiCall('delete')">Delete</button>
             </div>
@@ -345,10 +364,48 @@ HTML_TEMPLATE = """
         <div id="history_list"></div>
     </div>
 
-    <div id="view-grab" class="view">
-        <iframe src="https://discordlabs.org/tools/pfp-grabber"></iframe>
+    <div id="view-settings" class="view">
+        <div class="card">
+            <label>Effects &amp; Animations</label>
+            <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">Customise the feel of the app. All settings are saved automatically.</p>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-name">🎉 Confetti on Send</div>
+                    <div class="setting-desc">Burst of Discord-coloured confetti every time a message sends successfully</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="tog-confetti" onchange="saveSetting('fx_confetti',this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-name">🔊 Sound Effects</div>
+                    <div class="setting-desc">Subtle audio feedback on send, edit, delete, and errors</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="tog-sound" onchange="saveSetting('fx_sound',this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-name">✨ Send Button Animation</div>
+                    <div class="setting-desc">Send button pops when clicked</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="tog-sendbtn" onchange="saveSetting('fx_sendbtn',this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
     </div>
 </div>
+
+<canvas id="confetti-canvas"></canvas>
 
 <script>
 // ─────────────────────────────────────────────
@@ -387,6 +444,127 @@ const ACCENT_PRESETS = [
     '#1abc9c','#e67e22','#9b59b6','#3498db','#ff6b6b',
     '#ffd700','#00b0f4','#ff4500','#2ecc71','#ffffff',
 ];
+
+// ─────────────────────────────────────────────
+//  Settings
+// ─────────────────────────────────────────────
+function getSetting(key) {
+    const v = localStorage.getItem(key);
+    return v === null ? true : v === 'true';
+}
+function saveSetting(key, val) {
+    localStorage.setItem(key, String(val));
+}
+function initSettings() {
+    document.getElementById('tog-confetti').checked = getSetting('fx_confetti');
+    document.getElementById('tog-sound').checked    = getSetting('fx_sound');
+    document.getElementById('tog-sendbtn').checked  = getSetting('fx_sendbtn');
+}
+
+// ─────────────────────────────────────────────
+//  Confetti
+// ─────────────────────────────────────────────
+function launchConfetti() {
+    if (!getSetting('fx_confetti')) return;
+    const canvas = document.getElementById('confetti-canvas');
+    const ctx    = canvas.getContext('2d');
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const colors = ['#5865f2','#57f287','#fee75c','#eb459e','#ffffff','#ed4245','#00b0f4'];
+    const pieces = Array.from({length: 130}, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * -canvas.height * 0.4,
+        w: 6 + Math.random() * 8,
+        h: 10 + Math.random() * 6,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rot: Math.random() * Math.PI * 2,
+        vx: (Math.random() - 0.5) * 5,
+        vy: 3 + Math.random() * 5,
+        vr: (Math.random() - 0.5) * 0.18,
+    }));
+    const start = performance.now();
+    function draw(now) {
+        const elapsed = now - start;
+        if (elapsed > 3200) { ctx.clearRect(0, 0, canvas.width, canvas.height); return; }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const fade = Math.max(0, 1 - Math.max(0, elapsed - 2000) / 1200);
+        pieces.forEach(p => {
+            p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vy += 0.12;
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = fade;
+            ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+            ctx.restore();
+        });
+        requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+}
+
+// ─────────────────────────────────────────────
+//  Sound effects
+// ─────────────────────────────────────────────
+let _audioCtx = null;
+function _ac() {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return _audioCtx;
+}
+function playSound(type) {
+    if (!getSetting('fx_sound')) return;
+    try {
+        const ctx = _ac();
+        if (type === 'send') {
+            [[523.25, 0], [783.99, 0.1]].forEach(([freq, delay]) => {
+                const o = ctx.createOscillator(), g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.type = 'sine'; o.frequency.value = freq;
+                const t = ctx.currentTime + delay;
+                g.gain.setValueAtTime(0, t);
+                g.gain.linearRampToValueAtTime(0.18, t + 0.02);
+                g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+                o.start(t); o.stop(t + 0.28);
+            });
+        } else if (type === 'error') {
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.connect(g); g.connect(ctx.destination);
+            o.type = 'sawtooth';
+            o.frequency.setValueAtTime(220, ctx.currentTime);
+            o.frequency.linearRampToValueAtTime(100, ctx.currentTime + 0.22);
+            g.gain.setValueAtTime(0.12, ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+            o.start(); o.stop(ctx.currentTime + 0.25);
+        } else if (type === 'delete') {
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.connect(g); g.connect(ctx.destination);
+            o.type = 'sine';
+            o.frequency.setValueAtTime(440, ctx.currentTime);
+            o.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.18);
+            g.gain.setValueAtTime(0.13, ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+            o.start(); o.stop(ctx.currentTime + 0.18);
+        } else if (type === 'edit') {
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.connect(g); g.connect(ctx.destination);
+            o.type = 'sine'; o.frequency.value = 660;
+            g.gain.setValueAtTime(0.10, ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+            o.start(); o.stop(ctx.currentTime + 0.18);
+        }
+    } catch(e) {}
+}
+
+// ─────────────────────────────────────────────
+//  Send button pop
+// ─────────────────────────────────────────────
+function popSendBtn() {
+    if (!getSetting('fx_sendbtn')) return;
+    const btn = document.getElementById('btn_send');
+    btn.classList.remove('btn-pop');
+    void btn.offsetWidth;
+    btn.classList.add('btn-pop');
+}
 
 // ─────────────────────────────────────────────
 //  Typewriter
@@ -489,6 +667,7 @@ window.onload = () => {
     buildFormattingToolbar('ansi-toolbar', 'embed_desc');
     buildAccentPresets();
     refreshPresets();
+    initSettings();
     const savedUrl = localStorage.getItem('last_webhook');
     if (savedUrl) {
         document.getElementById('w_url').value = savedUrl;
@@ -1125,14 +1304,22 @@ async function apiCall(type) {
                     document.getElementById('w_content').value = "";
                     updatePreview();
                 }
+                launchConfetti();
+                playSound('send');
+            } else if (type === 'edit') {
+                playSound('edit');
+            } else if (type === 'delete') {
+                playSound('delete');
             }
         } else {
             status.innerText   = res.error || "Failed";
             status.style.color = "var(--red)";
+            playSound('error');
         }
     } catch(e) {
         status.innerText   = "Error connecting to server";
         status.style.color = "var(--red)";
+        playSound('error');
     }
 }
 

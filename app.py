@@ -191,7 +191,8 @@ HTML_TEMPLATE = """
             <div id="section-message">
                 <div class="form-group">
                     <label>Message Content</label>
-                    <textarea id="w_content" placeholder="Type a message... Use <@USER_ID> to mention someone." oninput="updatePreview()" rows="4"></textarea>
+                    <div class="ansi-toolbar" id="msg-toolbar"></div>
+                    <textarea id="w_content" class="ansi-textarea" placeholder="Type a message... Use <@USER_ID> to mention someone." oninput="updatePreview()" rows="4"></textarea>
                     <div id="w_counter" class="counter">0 / 2000</div>
                 </div>
             </div>
@@ -371,11 +372,12 @@ const ACCENT_PRESETS = [
 //  Init
 // ─────────────────────────────────────────────
 let currentMode = 'message';
-let savedSel = { start: 0, end: 0 };   // saved textarea selection for mobile
+let savedSel = { start: 0, end: 0, taId: null };
 let fieldCount = 0;
 
 window.onload = () => {
-    buildAnsiToolbar();
+    buildFormattingToolbar('msg-toolbar',  'w_content');
+    buildFormattingToolbar('ansi-toolbar', 'embed_desc');
     buildAccentPresets();
     refreshPresets();
     const savedUrl = localStorage.getItem('last_webhook');
@@ -386,55 +388,83 @@ window.onload = () => {
 };
 
 // ─────────────────────────────────────────────
-//  Build ANSI toolbar
+//  Build formatting toolbar (shared for both textareas)
 // ─────────────────────────────────────────────
-function buildAnsiToolbar() {
-    const toolbar = document.getElementById('ansi-toolbar');
+function buildFormattingToolbar(toolbarId, taId) {
+    const toolbar = document.getElementById(toolbarId);
+    const saveSel = () => saveSelectionFrom(document.getElementById(taId));
+
+    // ── Markdown buttons ──
+    const mdLabel = document.createElement('span');
+    mdLabel.className = 'tb-label';
+    mdLabel.textContent = 'Format:';
+    toolbar.appendChild(mdLabel);
+
+    const MD = [
+        { t: 'B',   title: 'Bold',          style: 'font-weight:900',              pre: '**',   suf: '**'   },
+        { t: 'I',   title: 'Italic',         style: 'font-style:italic',            pre: '*',    suf: '*'    },
+        { t: 'S',   title: 'Strikethrough',  style: 'text-decoration:line-through', pre: '~~',   suf: '~~'   },
+        { t: '||',  title: 'Spoiler',        style: 'font-size:9px',                pre: '||',   suf: '||'   },
+        { t: '`',   title: 'Inline Code',    style: 'font-family:monospace',        pre: '`',    suf: '`'    },
+        { t: '>',   title: 'Block Quote',    style: '',                             pre: '> ',   suf: ''     },
+    ];
+    MD.forEach(b => {
+        const el = makeTbBtn(b.t, b.title, b.style, saveSel);
+        el.addEventListener('click', () => applyMarkdown(b.pre, b.suf, taId));
+        toolbar.appendChild(el);
+    });
+
+    // ── Divider ──
+    const sep = document.createElement('span');
+    sep.style.cssText = 'width:1px;background:#4e5058;height:14px;margin:0 4px;flex-shrink:0;';
+    toolbar.appendChild(sep);
+
+    // ── ANSI color swatches ──
+    const colorLabel = document.createElement('span');
+    colorLabel.className = 'tb-label';
+    colorLabel.textContent = 'Color:';
+    toolbar.appendChild(colorLabel);
 
     ANSI_PALETTE.forEach(c => {
         const sw = document.createElement('div');
         sw.className = 'ansi-swatch';
         sw.style.background = c.bg;
         if (c.bg === '#dcddde' || c.bg === '#f8f8f8') sw.style.border = '2px solid #4e5058';
-        sw.title = c.label;
+        sw.title = c.label + ' (ANSI)';
         sw.addEventListener('mousedown', e => e.preventDefault());
-        sw.addEventListener('touchstart', saveSelectionFromTA, { passive: true });
-        sw.addEventListener('click', () => applyAnsiCode(c.code));
+        sw.addEventListener('touchstart', saveSel, { passive: true });
+        sw.addEventListener('click', () => applyAnsiCode(c.code, taId));
         toolbar.appendChild(sw);
     });
 
-    // Bold
-    const bBtn = makeTbBtn('B', 'Bold', 'font-weight:900');
-    bBtn.addEventListener('click', () => applyAnsiCode('1'));
-    toolbar.appendChild(bBtn);
+    const aBold = makeTbBtn('B', 'ANSI Bold',      'font-weight:900', saveSel);
+    aBold.addEventListener('click', () => applyAnsiCode('1', taId));
+    toolbar.appendChild(aBold);
 
-    // Underline
-    const uBtn = makeTbBtn('U', 'Underline', 'text-decoration:underline');
-    uBtn.addEventListener('click', () => applyAnsiCode('4'));
-    toolbar.appendChild(uBtn);
+    const aUl = makeTbBtn('U', 'ANSI Underline', 'text-decoration:underline', saveSel);
+    aUl.addEventListener('click', () => applyAnsiCode('4', taId));
+    toolbar.appendChild(aUl);
 
-    // Clear
-    const xBtn = makeTbBtn('x', 'Remove color from selection', '');
-    xBtn.style.fontSize = '11px';
-    xBtn.addEventListener('click', clearAnsiFromSelection);
-    toolbar.appendChild(xBtn);
+    const aX = makeTbBtn('x', 'Remove ANSI color from selection', 'font-size:11px', saveSel);
+    aX.addEventListener('click', () => clearAnsiFromSelection(taId));
+    toolbar.appendChild(aX);
 }
 
-function makeTbBtn(text, title, extraStyle) {
+function makeTbBtn(text, title, extraStyle, saveSelFn) {
     const el = document.createElement('div');
     el.className = 'ansi-swatch tb-meta';
     el.title = title;
     el.textContent = text;
     if (extraStyle) el.style.cssText += extraStyle;
     el.addEventListener('mousedown', e => e.preventDefault());
-    el.addEventListener('touchstart', saveSelectionFromTA, { passive: true });
+    if (saveSelFn) el.addEventListener('touchstart', saveSelFn, { passive: true });
     return el;
 }
 
-function saveSelectionFromTA() {
-    const ta = document.getElementById('embed_desc');
+function saveSelectionFrom(ta) {
     savedSel.start = ta.selectionStart;
     savedSel.end   = ta.selectionEnd;
+    savedSel.taId  = ta.id;
 }
 
 // ─────────────────────────────────────────────
@@ -551,16 +581,36 @@ function onAccentChange() {
 // ─────────────────────────────────────────────
 //  ANSI text coloring
 // ─────────────────────────────────────────────
-function getSelection(ta) {
+function getSelectionForTA(ta) {
     if (document.activeElement === ta) {
         return { start: ta.selectionStart, end: ta.selectionEnd };
     }
-    return { start: savedSel.start, end: savedSel.end };
+    if (savedSel.taId === ta.id) {
+        return { start: savedSel.start, end: savedSel.end };
+    }
+    return { start: 0, end: 0 };
 }
 
-function applyAnsiCode(code) {
-    const ta    = document.getElementById('embed_desc');
-    const sel   = getSelection(ta);
+function applyMarkdown(prefix, suffix, taId) {
+    const ta  = document.getElementById(taId);
+    const sel = getSelectionForTA(ta);
+    const txt = ta.value;
+    if (sel.start === sel.end) {
+        const ins = prefix + suffix;
+        ta.value = txt.substring(0, sel.start) + ins + txt.substring(sel.end);
+        ta.selectionStart = ta.selectionEnd = sel.start + prefix.length;
+    } else {
+        const selected = txt.substring(sel.start, sel.end);
+        ta.value = txt.substring(0, sel.start) + prefix + selected + suffix + txt.substring(sel.end);
+    }
+    ta.focus();
+    if (taId === 'w_content') updatePreview();
+    else updateEmbedPreview();
+}
+
+function applyAnsiCode(code, taId) {
+    const ta    = document.getElementById(taId);
+    const sel   = getSelectionForTA(ta);
     const text  = ta.value;
     const open  = ESC + '[' + code + 'm';
     const close = ESC + '[0m';
@@ -576,12 +626,13 @@ function applyAnsiCode(code) {
     }
     ensureAnsiBlock(ta);
     ta.focus();
-    updateEmbedPreview();
+    if (taId === 'w_content') updatePreview();
+    else updateEmbedPreview();
 }
 
-function clearAnsiFromSelection() {
-    const ta   = document.getElementById('embed_desc');
-    const sel  = getSelection(ta);
+function clearAnsiFromSelection(taId) {
+    const ta   = document.getElementById(taId);
+    const sel  = getSelectionForTA(ta);
     if (sel.start === sel.end) return;
 
     const chunk   = ta.value.substring(sel.start, sel.end);
@@ -598,7 +649,8 @@ function clearAnsiFromSelection() {
         }
     }
     ta.value = ta.value.substring(0, sel.start) + cleaned + ta.value.substring(sel.end);
-    updateEmbedPreview();
+    if (taId === 'w_content') updatePreview();
+    else updateEmbedPreview();
 }
 
 function ensureAnsiBlock(ta) {
@@ -714,10 +766,19 @@ function updatePreview() {
 
     if (currentMode === 'message') {
         const content = document.getElementById('w_content').value;
-        let parsed = content
-            .replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>')
-            .replace(/\\*(.*?)\\*/g, '<i>$1</i>')
-            .replace(/`(.*?)`/g, '<code style="background:#2b2d31;padding:2px;">$1</code>');
+        let parsed;
+        if (content.indexOf(ESC) !== -1) {
+            parsed = ansiToHtml(content);
+        } else {
+            parsed = content
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>')
+                .replace(/\\*(.*?)\\*/g, '<i>$1</i>')
+                .replace(/~~(.*?)~~/g, '<s>$1</s>')
+                .replace(/\\|\\|(.*?)\\|\\|/g, '<span style="background:#202225;color:#202225;border-radius:2px;padding:0 2px;cursor:pointer;" onclick="this.style.color=\'var(--text)\'" title="Spoiler — click to reveal">$1</span>')
+                .replace(/`(.*?)`/g, '<code style="background:#1e1f22;padding:1px 4px;border-radius:3px;">$1</code>')
+                .replace(/^&gt; (.+)$/gm, '<div style="border-left:3px solid #4e5058;padding-left:8px;margin:2px 0;color:var(--muted)">$1</div>');
+        }
         document.getElementById('pre_text').innerHTML = parsed || "Message preview...";
         document.getElementById('pre_text').style.display = '';
         document.getElementById('pre_embed').innerHTML = '';
